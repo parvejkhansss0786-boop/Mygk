@@ -2,10 +2,10 @@ import streamlit as st
 from google import genai
 from google.genai import types
 import PyPDF2
-import time
+
 
 # =========================================================
-# APP SETTINGS
+# PAGE SETTINGS
 # =========================================================
 
 st.set_page_config(
@@ -15,99 +15,100 @@ st.set_page_config(
 )
 
 st.title("📚 SSC GK & Current Affairs AI Master")
-st.caption(
-    "SSC CGL • CHSL • CPO • Delhi Police | "
-    "Static GK • Current Affairs • PDF Analysis"
-)
+st.caption("SSC CGL • CHSL • CPO • Delhi Police | GK • Current Affairs • PDF • AI Chat")
+
 
 # =========================================================
-# API SETUP
+# API CONFIGURATION
 # =========================================================
 
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
 except Exception:
-    API_KEY = None
+    API_KEY = ""
 
 if not API_KEY:
     st.error(
         "❌ GEMINI_API_KEY नहीं मिली। "
-        "Streamlit Secrets में अपनी API key डालें।"
+        "Streamlit Secrets में GEMINI_API_KEY डालें।"
     )
     st.stop()
 
-client = genai.Client(api_key=API_KEY)
 
-# वर्तमान मॉडल
+try:
+    client = genai.Client(api_key=API_KEY)
+except Exception as e:
+    st.error("❌ Gemini API client शुरू नहीं हो पाया।")
+    st.code(str(e))
+    st.stop()
+
+
 MODEL_NAME = "gemini-3.8-flash"
 
 
 # =========================================================
-# SSC MASTER PROMPT
+# SYSTEM PROMPT
 # =========================================================
 
 SYSTEM_PROMPT = """
-तुम SSC CGL, CHSL, CPO और Delhi Police परीक्षा के लिए
-एक अत्यंत अनुभवी GK शिक्षक और प्रश्न-निर्माता हो।
+तुम SSC परीक्षा के लिए एक विशेषज्ञ GK शिक्षक और प्रश्न-निर्माता हो।
 
-तुम्हारा मुख्य लक्ष्य है:
-विद्यार्थी को सही, परीक्षा-उपयोगी और गहराई वाले प्रश्न तथा
-उनके बिल्कुल स्पष्ट उत्तर देना।
+तुम्हारा मुख्य फोकस:
+SSC CGL
+SSC CHSL
+SSC CPO
+Delhi Police
+अन्य SSC स्तर की परीक्षाएँ
 
 भाषा:
-- पूरा उत्तर हिंदी में हो।
-- जरूरी English term को हिंदी के साथ bracket में लिख सकते हो।
-- भाषा ऐसी हो जैसे एक अनुभवी शिक्षक विद्यार्थी को समझा रहा हो।
+- पूरा उत्तर हिंदी में दो।
+- आवश्यक English technical terms को bracket में लिख सकते हो।
+- भाषा सरल लेकिन exam-oriented हो।
 
-FACT CHECKING:
-1. तथ्य गलत मत बनाओ।
-2. अगर प्रश्न Current Affairs या बदलने वाला तथ्य है,
-   तो उपलब्ध Google Search से सत्यापन करो।
-3. दो स्रोतों में विरोध हो तो उसे छिपाओ मत।
-4. तारीख, वर्ष, स्थान, व्यक्ति और पदनाम विशेष रूप से जाँचो।
-5. अनुमान को तथ्य की तरह मत लिखो।
-6. अगर तथ्य निश्चित नहीं है तो साफ लिखो कि इसकी पुष्टि आवश्यक है।
+महत्वपूर्ण नियम:
 
-SSC LEVEL:
-- केवल बहुत आसान सामान्य ज्ञान मत दो।
-- SSC CGL/CHSL/CPO स्तर के प्रश्न बनाओ।
-- विकल्पों में ऐसे तथ्य रखो जिनमें वास्तविक confusion हो।
-- Static GK को प्राथमिकता दो।
-- जरूरत पड़ने पर संबंधित इतिहास, भूगोल, अर्थशास्त्र,
-  संविधान, विज्ञान और संस्कृति से connection बताओ।
+1. तथ्यात्मक शुद्धता सबसे महत्वपूर्ण है।
+2. गलत या अनुमानित तथ्य मत दो।
+3. यदि किसी तथ्य को लेकर पर्याप्त निश्चितता नहीं है तो साफ बताओ।
+4. Static GK में केवल महत्वपूर्ण और परीक्षा उपयोगी facts दो।
+5. प्रश्नों को SSC स्तर का रखो।
+6. बहुत आसान प्रश्नों से बचो।
+7. जहाँ संभव हो, confusing options बनाओ।
+8. एक ही तथ्य को बार-बार repeat मत करो।
+9. प्रश्न के बाद सही उत्तर और explanation दो।
+10. Explanation छोटी लेकिन तथ्यपूर्ण हो।
+11. Actual PYQ होने का दावा तभी करो जब प्रश्न वास्तव में verified PYQ हो।
+12. अगर user "PYQ pattern" मांगे तो उसी pattern पर नया प्रश्न बनाओ और उसे actual PYQ मत बताओ।
+13. Current Affairs में तारीख और वर्ष स्पष्ट रखो।
+14. History में काल, शासक, युद्ध, स्थान और परिणाम में गलती मत करो।
+15. Geography में स्थान और भौगोलिक facts ध्यान से दो।
+16. Polity में Article, Amendment, Act और Constitutional provisions में गलती मत करो।
+17. Economics में definitions और concepts सही रखो।
+18. Science में scientific terminology सही रखो।
+19. अगर user किसी topic को "deep" में समझाने को कहे तो topic को basic से advanced तक समझाओ।
+20. अगर user one-liner मांगे तो केवल concise one-liners दो।
+21. अगर user MCQ मांगे तो options A, B, C, D के साथ दो।
+22. अगर user explanation मांगे तो answer के साथ explanation भी दो।
 
-हर MCQ का FORMAT:
+MCQ FORMAT:
 
-प्रश्न 1. ...
-(A) ...
-(B) ...
-(C) ...
-(D) ...
+प्रश्न 1. ............?
 
-✅ सही उत्तर: (B) ...
+A) ............
+B) ............
+C) ............
+D) ............
+
+✅ सही उत्तर: B) ............
 
 📌 व्याख्या:
-...
+............
 
-🎯 SSC Exam Point:
-...
+SSC परीक्षा के लिए महत्वपूर्ण तथ्य:
+- ............
+- ............
 
-अगर प्रश्न में कोई महत्वपूर्ण तथ्य है तो:
-📚 याद रखने योग्य तथ्य:
-...
-
-अगर user सिर्फ किसी topic को समझने के लिए पूछता है,
-तो पहले concept समझाओ और फिर examples/MCQs दो।
-
-अगर user कहता है "one liner",
-तो केवल छोटे और factual one-liners दो।
-
-अगर user कहता है "deep",
-तो topic को basic → advanced → exam facts → traps
-के क्रम में समझाओ।
-
-अगर user सिर्फ सामान्य सवाल पूछता है,
-तो सामान्य ChatGPT की तरह सीधे और स्पष्ट उत्तर दो।
+हमेशा उत्तर को exam-oriented और तथ्यात्मक रखो।
 """
 
 
@@ -115,149 +116,213 @@ SSC LEVEL:
 # AI FUNCTION
 # =========================================================
 
-def ask_ai(prompt, use_search=True):
-
-    full_prompt = SYSTEM_PROMPT + "\n\nUSER REQUEST:\n" + prompt
-
+def ask_ai(
+    user_prompt,
+    use_system_prompt=True,
+    max_tokens=6000
+):
     try:
-
-        tools = []
-
-        # Current / changing information के लिए Google Search
-        if use_search:
-            tools = [
-                types.Tool(
-                    google_search=types.GoogleSearch()
-                )
-            ]
+        if use_system_prompt:
+            final_prompt = (
+                SYSTEM_PROMPT
+                + "\n\nUSER REQUEST:\n"
+                + user_prompt
+            )
+        else:
+            final_prompt = user_prompt
 
         response = client.models.generate_content(
             model=MODEL_NAME,
-            contents=full_prompt,
+            contents=final_prompt,
             config=types.GenerateContentConfig(
-                temperature=0.25,
-                tools=tools
+                temperature=0.2,
+                max_output_tokens=max_tokens
             )
         )
 
-        if response and response.text:
+        if response is None:
+            return "❌ AI से कोई response नहीं मिला।"
+
+        if response.text:
             return response.text
 
-        return "AI ने कोई उत्तर नहीं दिया। कृपया दोबारा प्रयास करें।"
+        return "❌ AI ने कोई text response नहीं दिया।"
 
     except Exception as e:
-
         error_text = str(e).lower()
 
-        if "429" in error_text or "resourceexhausted" in error_text:
-            return (
-                "⚠️ अभी AI API की quota/rate limit पूरी हो गई है।\n\n"
-                "यह ऐप की programming error नहीं है। "
-                "थोड़ी देर बाद दोबारा प्रयास करें या अपने Gemini "
-                "project की quota/billing स्थिति देखें।"
-            )
+        if (
+            "429" in error_text
+            or "resourceexhausted" in error_text
+            or "quota" in error_text
+        ):
+            return """
+⚠️ Gemini API की quota या rate limit अभी पूरी हो गई है।
 
-        if "api key" in error_text or "authentication" in error_text:
-            return (
-                "🔐 API Key में समस्या है। "
-                "Streamlit Secrets में GEMINI_API_KEY जाँचें।"
-            )
+यह app की coding error नहीं है।
+कुछ समय बाद दोबारा कोशिश करें या अपने Gemini API project की quota/billing स्थिति देखें।
+"""
 
-        return (
-            "❌ AI से उत्तर लेते समय समस्या आई।\n\n"
-            f"तकनीकी जानकारी: {str(e)}"
-        )
+        if "api key" in error_text or "401" in error_text or "403" in error_text:
+            return """
+❌ Gemini API Key में समस्या है।
+
+कृपया:
+1. API key सही है या नहीं देखें।
+2. Streamlit Secrets में GEMINI_API_KEY सही नाम से मौजूद है।
+3. API key active है या नहीं देखें।
+"""
+
+        if "not found" in error_text or "404" in error_text:
+            return f"""
+❌ Model उपलब्ध नहीं है।
+
+Current model:
+{MODEL_NAME}
+
+Gemini API configuration और model availability check करें।
+"""
+
+        return f"""
+❌ AI request में error आया:
+
+{str(e)}
+"""
+
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+
+# =========================================================
+# SIDEBAR
+# =========================================================
+
+with st.sidebar:
+
+    st.header("⚙️ Settings")
+
+    question_count = st.slider(
+        "प्रश्नों की संख्या",
+        min_value=5,
+        max_value=20,
+        value=10
+    )
+
+    difficulty = st.selectbox(
+        "Difficulty",
+        [
+            "SSC Normal",
+            "SSC CGL Level",
+            "SSC CGL Hard",
+            "Very Hard"
+        ]
+    )
+
+    st.divider()
+
+    st.info(
+        "📌 यह app Static GK, Current Affairs, "
+        "MCQ, One-Liner, Deep Study और PDF से questions बनाने के लिए है।"
+    )
 
 
 # =========================================================
 # TABS
 # =========================================================
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🔍 Topic से प्रश्न",
-    "📚 Subject-wise",
-    "📄 PDF से प्रश्न",
-    "💬 कुछ भी पूछें"
-])
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "🔍 Topic से Questions",
+        "📚 Subject-wise",
+        "📄 PDF से Questions",
+        "🤖 AI Chat"
+    ]
+)
 
 
 # =========================================================
-# TAB 1 — TOPIC QUESTIONS
+# TAB 1 - TOPIC QUESTIONS
 # =========================================================
 
 with tab1:
 
-    st.subheader("🔍 किसी भी Topic से SSC Questions")
+    st.header("🔍 किसी भी Topic से SSC Questions")
 
     topic = st.text_input(
         "Topic लिखें",
-        placeholder=(
-            "जैसे: भारत की राष्ट्रीय आय, मेवात का इतिहास, "
-            "RBI, मौलिक अधिकार, सिंधु घाटी सभ्यता..."
-        )
+        placeholder="जैसे: भारतीय अर्थव्यवस्था, मेवात का इतिहास, RBI, मुगल साम्राज्य"
     )
 
-    difficulty = st.selectbox(
-        "Difficulty",
+    question_type = st.selectbox(
+        "Question Type",
         [
-            "SSC CGL स्तर",
-            "SSC CGL कठिन",
-            "SSC CPO / Delhi Police कठिन",
-            "बहुत कठिन"
+            "MCQ",
+            "One Liner",
+            "MCQ + Explanation",
+            "Deep Study + MCQ"
         ]
     )
 
-    number = st.slider(
-        "कितने प्रश्न?",
-        min_value=5,
-        max_value=20,
-        value=10
+    generate_topic = st.button(
+        "🚀 Questions Generate करें",
+        type="primary",
+        use_container_width=True
     )
 
-    if st.button(
-        "🚀 प्रश्न Generate करें",
-        key="topic_btn",
-        use_container_width=True
-    ):
+    if generate_topic:
 
         if not topic.strip():
-            st.warning("पहले Topic लिखें।")
+            st.warning("⚠️ पहले कोई topic लिखें।")
+
         else:
 
-            with st.spinner(
-                "📚 Topic का analysis करके प्रश्न तैयार किए जा रहे हैं..."
-            ):
-
-                prompt = f"""
+            prompt = f"""
 Topic: {topic}
 
 Difficulty: {difficulty}
 
-कुल प्रश्न: {number}
+Question Type: {question_type}
 
-निर्देश:
-- इस topic के सबसे महत्वपूर्ण SSC facts चुनो।
-- प्रश्नों को दोहराना नहीं है।
-- सही उत्तर की व्याख्या अवश्य दो।
-- जहाँ आवश्यक हो current information को verify करो।
-- पुराने/गलत facts का उपयोग मत करो।
+कुल {question_count} प्रश्न तैयार करो।
+
+अगर MCQ है:
+- प्रत्येक प्रश्न के 4 options दो।
+- सही answer दो।
+- explanation दो।
+
+अगर One Liner है:
+- केवल महत्वपूर्ण परीक्षा उपयोगी one-liners दो।
+
+अगर Deep Study + MCQ है:
+- पहले topic का structured explanation दो।
+- फिर महत्वपूर्ण facts दो।
+- फिर {question_count} कठिन MCQ दो।
+
+Questions में repetition नहीं होना चाहिए।
 """
 
-                result = ask_ai(prompt, use_search=True)
+            with st.spinner("🧠 SSC स्तर के प्रश्न तैयार हो रहे हैं..."):
 
-                st.markdown(result)
+                result = ask_ai(prompt)
+
+            st.markdown(result)
 
 
 # =========================================================
-# TAB 2 — SUBJECT WISE
+# TAB 2 - SUBJECT WISE
 # =========================================================
 
 with tab2:
 
-    st.subheader("📚 Subject-wise SSC Practice")
+    st.header("📚 Subject-wise SSC Preparation")
 
     subject = st.selectbox(
-        "विषय चुनें",
+        "Subject चुनें",
         [
             "अर्थशास्त्र (Economics)",
             "इतिहास (History)",
@@ -266,204 +331,301 @@ with tab2:
             "विज्ञान (Science)",
             "Static GK",
             "कला एवं संस्कृति",
-            "पर्यावरण",
-            "कंप्यूटर"
+            "पर्यावरण एवं पारिस्थितिकी",
+            "Computer",
+            "Sports"
         ]
     )
 
     mode = st.selectbox(
-        "Practice Type",
+        "Study Mode",
         [
-            "Important Questions",
-            "PYQ Pattern",
+            "Important MCQ",
             "One Liner",
+            "PYQ Pattern",
             "Concept + MCQ",
             "Deep Study"
         ]
     )
 
-    if st.button(
-        f"📖 {subject} शुरू करें",
-        key="subject_btn",
+    subject_topic = st.text_input(
+        "Specific topic (optional)",
+        placeholder="जैसे: RBI, भक्ति आंदोलन, Fundamental Rights"
+    )
+
+    generate_subject = st.button(
+        "📖 Subject Questions Generate करें",
+        type="primary",
         use_container_width=True
-    ):
+    )
 
-        with st.spinner(
-            f"{subject} का SSC-level material तैयार हो रहा है..."
-        ):
+    if generate_subject:
 
-            prompt = f"""
-विषय: {subject}
+        topic_text = subject_topic.strip()
 
-Practice Type: {mode}
-
-इस विषय पर परीक्षा में उपयोगी सामग्री तैयार करो।
-
-अगर PYQ Pattern चुना गया है:
-- वास्तविक PYQ होने का दावा तभी करो जब verified हो।
-- अन्यथा "PYQ Pattern" लिखो।
-
-अगर One Liner चुना गया है:
-- छोटे, factual और याद रखने योग्य points दो।
-
-अगर Deep Study चुना गया है:
-- Concept
-- Important Facts
-- SSC Traps
-- One Liners
-- MCQs
-के क्रम में समझाओ।
+        if topic_text:
+            topic_instruction = f"""
+Specific Topic:
+{topic_text}
+"""
+        else:
+            topic_instruction = """
+पूरे subject में SSC परीक्षा के सबसे महत्वपूर्ण areas cover करो।
 """
 
-            result = ask_ai(prompt, use_search=True)
+        prompt = f"""
+Subject: {subject}
 
-            st.markdown(result)
+Study Mode: {mode}
+
+{topic_instruction}
+
+Difficulty: {difficulty}
+
+कुल {question_count} items/questions दो।
+
+विशेष निर्देश:
+
+यदि mode = Important MCQ:
+SSC परीक्षा के महत्वपूर्ण MCQ बनाओ।
+
+यदि mode = One Liner:
+Important factual one-liners दो।
+
+यदि mode = PYQ Pattern:
+Actual PYQ होने का दावा मत करो।
+SSC में पूछे जाने वाले PYQ pattern पर नए प्रश्न बनाओ।
+
+यदि mode = Concept + MCQ:
+पहले concepts समझाओ और फिर MCQ दो।
+
+यदि mode = Deep Study:
+Topic को basic से advanced तक exam-oriented तरीके से समझाओ।
+फिर महत्वपूर्ण facts और MCQ दो।
+
+गलत facts और repetition से बचो।
+"""
+
+        with st.spinner(
+            f"📚 {subject} के questions तैयार हो रहे हैं..."
+        ):
+
+            result = ask_ai(prompt)
+
+        st.markdown(result)
 
 
 # =========================================================
-# TAB 3 — PDF QUESTIONS
+# TAB 3 - PDF QUESTIONS
 # =========================================================
 
 with tab3:
 
-    st.subheader("📄 PDF से SSC Questions")
+    st.header("📄 PDF से SSC Questions")
 
     uploaded_file = st.file_uploader(
-        "अपनी PDF upload करें",
+        "PDF upload करें",
         type=["pdf"]
     )
 
-    if uploaded_file:
+    pdf_question_count = st.slider(
+        "PDF से कितने questions चाहिए?",
+        min_value=5,
+        max_value=30,
+        value=10,
+        key="pdf_count"
+    )
 
-        st.info(
-            f"📄 File: {uploaded_file.name}"
+    if uploaded_file is not None:
+
+        st.success(
+            f"✅ PDF upload हो गई: {uploaded_file.name}"
         )
 
-        pdf_question_count = st.slider(
-            "कितने प्रश्न चाहिए?",
-            5,
-            20,
-            10,
-            key="pdf_count"
-        )
-
-        if st.button(
-            "🧠 PDF Analyze करें",
-            key="pdf_btn",
+        generate_pdf = st.button(
+            "📄 PDF से Questions निकालें",
+            type="primary",
             use_container_width=True
-        ):
+        )
 
-            with st.spinner(
-                "📖 PDF पढ़ी जा रही है..."
-            ):
+        if generate_pdf:
+
+            with st.spinner("📖 PDF पढ़ी जा रही है..."):
 
                 try:
 
-                    reader = PyPDF2.PdfReader(
+                    pdf_reader = PyPDF2.PdfReader(
                         uploaded_file
                     )
 
-                    pages = len(reader.pages)
+                    pages = len(pdf_reader.pages)
 
-                    text_parts = []
+                    text = ""
 
-                    for page in reader.pages:
+                    for page in pdf_reader.pages:
 
                         page_text = page.extract_text()
 
                         if page_text:
-                            text_parts.append(page_text)
+                            text += page_text + "\n"
 
-                    pdf_text = "\n".join(text_parts)
+                    if not text.strip():
 
-                    if not pdf_text.strip():
                         st.error(
-                            "इस PDF से text नहीं निकाला जा सका। "
-                            "अगर यह scanned/image PDF है तो OCR की जरूरत होगी।"
+                            "❌ PDF से text नहीं निकला। "
+                            "संभव है PDF scanned/image-based हो।"
                         )
-                        st.stop()
 
-                    # बहुत बड़ी PDF से API request अनावश्यक रूप से बड़ी
-                    # न हो इसलिए text को सीमित करते हैं।
-                    pdf_text = pdf_text[:100000]
+                    else:
 
-                    prompt = f"""
-नीचे एक PDF के notes/text दिए गए हैं।
+                        # बहुत बड़ी PDF के लिए text limit
+                        max_chars = 120000
 
-PDF से केवल वही facts लो जो वास्तव में text में मौजूद हैं।
+                        if len(text) > max_chars:
 
-कुल प्रश्न: {pdf_question_count}
+                            text = text[:max_chars]
 
-काम:
-1. सबसे महत्वपूर्ण परीक्षा वाले facts खोजो।
-2. उनसे SSC-level MCQs बनाओ।
-3. हर प्रश्न में 4 options हों।
-4. सही उत्तर बताओ।
-5. विस्तृत लेकिन आसान हिंदी explanation दो।
-6. हर प्रश्न के बाद SSC Exam Point दो।
-7. PDF में मौजूद तथ्य के बाहर मनगढ़ंत information मत जोड़ो।
+                            st.warning(
+                                "⚠️ PDF बहुत बड़ी है। "
+                                "पहले लगभग 120,000 characters process किए गए हैं।"
+                            )
 
-PDF TEXT:
+                        prompt = f"""
+नीचे PDF से निकाला गया study material है।
 
-{pdf_text}
+इसी material से SSC परीक्षा के लिए
+{pdf_question_count} महत्वपूर्ण questions तैयार करो।
+
+Difficulty:
+{difficulty}
+
+Rules:
+
+1. केवल दिए गए PDF material को आधार बनाओ।
+2. PDF के facts को बदलो मत।
+3. MCQ में 4 options दो।
+4. सही answer स्पष्ट बताओ।
+5. हर answer की explanation दो।
+6. Important facts को प्राथमिकता दो।
+7. Repetition मत करो।
+8. अगर PDF में किसी fact की जानकारी नहीं है तो उसे invent मत करो।
+
+PDF CONTENT:
+
+{text}
 """
 
-                    result = ask_ai(
-                        prompt,
-                        use_search=False
-                    )
+                        result = ask_ai(
+                            prompt,
+                            max_tokens=8000
+                        )
 
-                    st.markdown(result)
+                        st.markdown(result)
 
                 except Exception as e:
 
                     st.error(
-                        f"PDF पढ़ने में समस्या आई: {str(e)}"
+                        "❌ PDF process करने में समस्या आई।"
                     )
+
+                    st.code(str(e))
 
 
 # =========================================================
-# TAB 4 — GENERAL AI CHAT
+# TAB 4 - GENERAL AI CHAT
 # =========================================================
 
 with tab4:
 
-    st.subheader("💬 कुछ भी पूछें")
+    st.header("🤖 SSC AI Chat")
 
-    user_question = st.text_area(
-        "अपना सवाल लिखें",
-        placeholder=(
-            "जैसे:\n"
-            "भारत में राष्ट्रीय आय की गणना कैसे होती है?\n"
-            "मेवात का इतिहास deep में समझाओ\n"
-            "RBI के बारे में SSC CGL level पर बताओ\n"
-            "मुझे 20 economics one-liners दो"
-        ),
-        height=180
+    st.write(
+        "यहाँ आप किसी भी SSC/GK topic के बारे में सीधे सवाल पूछ सकते हैं।"
     )
 
-    if st.button(
-        "🤖 AI से पूछें",
-        key="chat_btn",
-        use_container_width=True
-    ):
+    # Chat history display
+    for message in st.session_state.chat_history:
 
-        if not user_question.strip():
+        if message["role"] == "user":
 
-            st.warning("पहले अपना सवाल लिखें।")
+            with st.chat_message("user"):
+                st.markdown(message["content"])
 
         else:
 
-            with st.spinner(
-                "🤖 जवाब तैयार किया जा रहा है..."
-            ):
+            with st.chat_message("assistant"):
+                st.markdown(message["content"])
 
-                result = ask_ai(
-                    user_question,
-                    use_search=True
+
+    user_question = st.chat_input(
+        "जैसे: RBI की monetary policy को deep में समझाओ..."
+    )
+
+    if user_question:
+
+        st.session_state.chat_history.append(
+            {
+                "role": "user",
+                "content": user_question
+            }
+        )
+
+        with st.chat_message("user"):
+            st.markdown(user_question)
+
+        # Previous conversation context
+        conversation_context = ""
+
+        for item in st.session_state.chat_history[-10:]:
+
+            role = item["role"]
+
+            if role == "user":
+                conversation_context += (
+                    "\nUSER: "
+                    + item["content"]
                 )
 
-                st.markdown(result)
+            else:
+                conversation_context += (
+                    "\nASSISTANT: "
+                    + item["content"]
+                )
+
+        chat_prompt = f"""
+यह SSC preparation के लिए conversational AI है।
+
+Previous conversation:
+{conversation_context}
+
+User का latest question:
+{user_question}
+
+Latest question का सीधा और उपयोगी उत्तर दो।
+
+अगर user:
+- "deep" कहे → detail में समझाओ।
+- "one liner" कहे → one-liner दो।
+- "MCQ" कहे → MCQ दो।
+- "questions" कहे → questions दो।
+- "PYQ" कहे → actual PYQ होने का दावा तभी करो जब verified हो।
+- किसी answer को challenge करे → तथ्य दोबारा check करके corrected answer दो।
+"""
+
+        with st.chat_message("assistant"):
+
+            with st.spinner("🧠 सोच रहा हूँ..."):
+
+                answer = ask_ai(chat_prompt)
+
+            st.markdown(answer)
+
+        st.session_state.chat_history.append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
+        )
 
 
 # =========================================================
@@ -474,38 +636,4 @@ st.divider()
 
 st.caption(
     "📚 SSC GK AI Master | CGL • CHSL • CPO • Delhi Police"
-)
-
-"requirements.txt"
-
-:::writing{variant="document" id="74106" title="requirements.txt"}
-
-streamlit
-google-genai
-PyPDF2
-
-Streamlit Secrets
-
-अपने Streamlit project में Secrets में यह रखना है:
-
-GEMINI_API_KEY = "तुम्हारी_Gemini_API_key"
-
-API key को "app.py" में सीधे मत लिखना।
-
-इसमें क्या बेहतर किया है?
-
-- पुराना "google.generativeai" हटाया → नया "google-genai" SDK।
-- "gemini-pro" हटाया → वर्तमान model इस्तेमाल किया।
-- Google Search grounding जोड़ा, इसलिए current affairs जैसे बदलने वाले facts को web से verify कराया जा सकता है।
-- गलत fact बनाने से रोकने के लिए strict prompt।
-- हर MCQ में उत्तर + explanation + SSC Exam Point।
-- Topic / Subject / PDF / सामान्य सवाल चारों modes।
-- "429 / quota" आने पर app crash होने के बजाय साफ message देगा।
-- PDF text पढ़कर उसी से questions बनाएगा।
-- "PYQ Pattern" में AI को असली PYQ होने का झूठा दावा करने से रोका है।
-- Current facts और historical/static facts को अलग तरह से handle किया है।
-
-एक महत्वपूर्ण सीमा: कोई code API quota को असीमित नहीं बना सकता। अगर Gemini project की quota सच में समाप्त हो जाए तो server भी उसी API से उत्तर नहीं निकाल पाएगा। इसलिए मैंने quota को bypass करने के बजाय graceful error handling रखा है। Google की वर्तमान documentation भी model/SDK migration और rate-limit handling को अलग concern मानती है।
-
-और तुम्हारे “जैसे मैं तुमसे बात करता हूँ, वैसे answer दे” वाले हिस्से के लिए "💬 कुछ भी पूछें" वाला tab रखा है—वहाँ तुम सामान्य भाषा में लिख सकते हो, जैसे “Economics zero se deep me samjha”, और उसी तरह structured explanation मिलेगा
- 
+) 
