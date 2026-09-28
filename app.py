@@ -2,6 +2,7 @@ import streamlit as st
 import PyPDF2
 import re
 import random
+from openai import OpenAI
 
 st.set_page_config(
     page_title="SSC GK Search AI",
@@ -9,9 +10,18 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📚 SSC GK Search Master")
-st.caption("No API Key • Local Knowledge • PDF Search • MCQ")
+# =========================================================
+# OPENROUTER AI SETUP (सिर्फ फ्री मॉडल)
+# =========================================================
+OPENROUTER_KEY = "Sk-or-v1-d83da7172ae9d700a68e74ac456bf7d33ed9b1ac4140956aa6ca209ed161749d"
 
+client = OpenAI(
+  base_url="https://openrouter.ai/api/v1",
+  api_key=OPENROUTER_KEY, 
+)
+
+st.title("📚 SSC GK Search Master")
+st.caption("Free AI Model • Local Knowledge • PDF Search • MCQ")
 
 # =========================================================
 # BUILT-IN SSC KNOWLEDGE
@@ -88,405 +98,174 @@ WWW का पूरा नाम World Wide Web है।
 """
 }
 
-
 # =========================================================
 # SEARCH ENGINE
 # =========================================================
 
 def search_knowledge(query):
-
     query = query.lower().strip()
-
     results = []
+    
+    for topic, text in KNOWLEDGE.items():
+        if (query in topic.lower() or query in text.lower()):
+            results.append((topic, text))
 
     for topic, text in KNOWLEDGE.items():
-
-        if (
-            query in topic.lower()
-            or query in text.lower()
-        ):
-            results.append(
-                (topic, text)
-            )
-
-    # individual sentences
-    for topic, text in KNOWLEDGE.items():
-
-        sentences = re.split(
-            r"[।\n]",
-            text
-        )
-
+        sentences = re.split(r"[।\n]", text)
         for sentence in sentences:
-
             if query and query in sentence.lower():
+                results.append((topic, sentence.strip()))
 
-                results.append(
-                    (topic, sentence.strip())
-                )
-
-    # remove duplicates
     final = []
-
     seen = set()
-
     for topic, text in results:
-
         key = text.strip()
-
         if key and key not in seen:
-
             seen.add(key)
-
-            final.append(
-                (topic, key)
-            )
+            final.append((topic, key))
 
     return final
-
 
 # =========================================================
 # PDF TEXT EXTRACTION
 # =========================================================
 
 def extract_pdf(file):
-
     reader = PyPDF2.PdfReader(file)
-
     text = ""
-
     for page in reader.pages:
-
         page_text = page.extract_text()
-
         if page_text:
-
             text += page_text + "\n"
-
     return text
 
-
 def search_pdf(text, query):
-
-    sentences = re.split(
-        r"[।\n]",
-        text
-    )
-
+    sentences = re.split(r"[।\n]", text)
     results = []
-
     query_words = query.lower().split()
-
+    
     for sentence in sentences:
-
         sentence_clean = sentence.strip()
-
         if not sentence_clean:
             continue
-
         sentence_lower = sentence_clean.lower()
-
-        matches = sum(
-            1
-            for word in query_words
-            if word in sentence_lower
-        )
-
+        matches = sum(1 for word in query_words if word in sentence_lower)
         if matches > 0:
-
-            results.append(
-                (matches, sentence_clean)
-            )
-
-    results.sort(
-        reverse=True,
-        key=lambda x: x[0]
-    )
-
-    return [
-        text
-        for score, text in results[:10]
-    ]
-
+            results.append((matches, sentence_clean))
+            
+    results.sort(reverse=True, key=lambda x: x[0])
+    return [text for score, text in results[:10]]
 
 # =========================================================
 # TABS
 # =========================================================
 
-tab1, tab2, tab3 = st.tabs(
-    [
-        "🔎 Search",
-        "📄 PDF Search",
-        "📝 MCQ"
-    ]
-)
-
+tab1, tab2, tab3 = st.tabs(["🔎 Search", "📄 PDF Search", "📝 MCQ"])
 
 # =========================================================
-# SEARCH
+# SEARCH WITH AI FALLBACK
 # =========================================================
 
 with tab1:
-
     st.header("🔎 SSC Knowledge Search")
+    query = st.text_input("अपना सवाल या keyword लिखें", placeholder="जैसे RBI क्या है?")
 
-    query = st.text_input(
-        "अपना सवाल या keyword लिखें",
-        placeholder="जैसे RBI क्या है?"
-    )
-
-    if st.button(
-        "🔍 Search करें",
-        type="primary"
-    ):
-
+    if st.button("🔍 Search करें", type="primary"):
         if not query.strip():
-
-            st.warning(
-                "पहले सवाल लिखें।"
-            )
-
+            st.warning("पहले सवाल लिखें।")
         else:
-
-            results = search_knowledge(
-                query
-            )
+            results = search_knowledge(query)
 
             if results:
-
-                st.success(
-                    f"{len(results)} result मिले"
-                )
-
+                st.success(f"{len(results)} result मिले")
                 for topic, answer in results:
-
-                    st.markdown(
-                        f"### 📌 {topic}"
-                    )
-
-                    st.write(
-                        answer
-                    )
-
+                    st.markdown(f"### 📌 {topic}")
+                    st.write(answer)
                     st.divider()
-
             else:
-
-                st.warning(
-                    "इस सवाल का answer अभी built-in knowledge में नहीं मिला।"
-                )
-
-                st.info(
-                    "PDF upload करके PDF Search से भी खोज सकते हो।"
-                )
-
+                st.info("Local knowledge में यह जानकारी नहीं मिली। AI से उत्तर खोजा जा रहा है...")
+                try:
+                    # Calling Free AI Model
+                    response = client.chat.completions.create(
+                      model="google/gemma-4-26b-a4b-it:free",
+                      messages=[
+                        {"role": "system", "content": "You are a helpful assistant for SSC and competitive exams preparation. Answer in clear Hindi."},
+                        {"role": "user", "content": query}
+                      ]
+                    )
+                    st.success("🤖 AI द्वारा दिया गया उत्तर:")
+                    st.write(response.choices[0].message.content)
+                    
+                except Exception as e:
+                    st.error(f"AI से संपर्क करने में समस्या आई: {e}")
+                
+                st.divider()
+                st.caption("💡 PDF upload करके PDF Search वाले Tab से भी खोज सकते हो।")
 
 # =========================================================
 # PDF SEARCH
 # =========================================================
 
 with tab2:
-
     st.header("📄 PDF से Answer Search")
-
-    pdf = st.file_uploader(
-        "अपनी SSC PDF upload करें",
-        type=["pdf"]
-    )
+    pdf = st.file_uploader("अपनी SSC PDF upload करें", type=["pdf"])
 
     if pdf:
-
-        with st.spinner(
-            "PDF पढ़ी जा रही है..."
-        ):
-
+        with st.spinner("PDF पढ़ी जा रही है..."):
             try:
-
-                pdf_text = extract_pdf(
-                    pdf
-                )
-
-                st.success(
-                    "✅ PDF तैयार है।"
-                )
-
+                pdf_text = extract_pdf(pdf)
+                st.success("✅ PDF तैयार है।")
             except Exception as e:
-
-                st.error(
-                    "PDF पढ़ने में समस्या आई।"
-                )
-
+                st.error("PDF पढ़ने में समस्या आई।")
                 st.stop()
 
+        pdf_query = st.text_input("PDF में क्या search करना है?", placeholder="जैसे RBI, 1857, Fundamental Rights")
 
-        pdf_query = st.text_input(
-            "PDF में क्या search करना है?",
-            placeholder="जैसे RBI, 1857, Fundamental Rights"
-        )
-
-
-        if st.button(
-            "🔎 PDF Search करें"
-        ):
-
+        if st.button("🔎 PDF Search करें"):
             if not pdf_query.strip():
-
-                st.warning(
-                    "पहले search शब्द लिखें।"
-                )
-
+                st.warning("पहले search शब्द लिखें।")
             else:
-
-                results = search_pdf(
-                    pdf_text,
-                    pdf_query
-                )
-
+                results = search_pdf(pdf_text, pdf_query)
                 if results:
-
-                    st.success(
-                        f"{len(results)} relevant results मिले"
-                    )
-
+                    st.success(f"{len(results)} relevant results मिले")
                     for result in results:
-
-                        st.write(
-                            "📌 " + result
-                        )
-
+                        st.write("📌 " + result)
                         st.divider()
-
                 else:
-
-                    st.warning(
-                        "PDF में matching information नहीं मिली।"
-                    )
-
+                    st.warning("PDF में matching information नहीं मिली।")
 
 # =========================================================
 # MCQ
 # =========================================================
 
 with tab3:
-
-    st.header(
-        "📝 SSC Practice MCQ"
-    )
+    st.header("📝 SSC Practice MCQ")
 
     mcq_data = [
-
-        (
-            "RBI की स्थापना किस वर्ष हुई?",
-            [
-                "1935",
-                "1947",
-                "1950",
-                "1969"
-            ],
-            "1935"
-        ),
-
-        (
-            "भारत का संविधान कब लागू हुआ?",
-            [
-                "15 अगस्त 1947",
-                "26 नवंबर 1949",
-                "26 जनवरी 1950",
-                "2 अक्टूबर 1950"
-            ],
-            "26 जनवरी 1950"
-        ),
-
-        (
-            "CPU का पूरा नाम क्या है?",
-            [
-                "Central Processing Unit",
-                "Central Program Unit",
-                "Computer Processing Unit",
-                "Control Processing Unit"
-            ],
-            "Central Processing Unit"
-        ),
-
-        (
-            "बल की SI इकाई क्या है?",
-            [
-                "जूल",
-                "वाट",
-                "न्यूटन",
-                "पास्कल"
-            ],
-            "न्यूटन"
-        ),
-
-        (
-            "भारत छोड़ो आंदोलन किस वर्ष शुरू हुआ?",
-            [
-                "1919",
-                "1920",
-                "1930",
-                "1942"
-            ],
-            "1942"
-        )
+        ("RBI की स्थापना किस वर्ष हुई?", ["1935", "1947", "1950", "1969"], "1935"),
+        ("भारत का संविधान कब लागू हुआ?", ["15 अगस्त 1947", "26 नवंबर 1949", "26 जनवरी 1950", "2 अक्टूबर 1950"], "26 जनवरी 1950"),
+        ("CPU का पूरा नाम क्या है?", ["Central Processing Unit", "Central Program Unit", "Computer Processing Unit", "Control Processing Unit"], "Central Processing Unit"),
+        ("बल की SI इकाई क्या है?", ["जूल", "वाट", "न्यूटन", "पास्कल"], "न्यूटन"),
+        ("भारत छोड़ो आंदोलन किस वर्ष शुरू हुआ?", ["1919", "1920", "1930", "1942"], "1942")
     ]
 
+    number = st.slider("कितने प्रश्न?", 1, len(mcq_data), 5)
+    selected = random.sample(mcq_data, number)
 
-    number = st.slider(
-        "कितने प्रश्न?",
-        1,
-        len(mcq_data),
-        5
-    )
+    for i, (question, options, answer) in enumerate(selected, start=1):
+        st.markdown(f"### प्रश्न {i}. {question}")
+        user_answer = st.radio("उत्तर चुनें:", options, key=f"mcq_{i}")
 
-
-    selected = random.sample(
-        mcq_data,
-        number
-    )
-
-
-    for i, (question, options, answer) in enumerate(
-        selected,
-        start=1
-    ):
-
-        st.markdown(
-            f"### प्रश्न {i}. {question}"
-        )
-
-        user_answer = st.radio(
-            "उत्तर चुनें:",
-            options,
-            key=f"mcq_{i}"
-        )
-
-
-        if st.button(
-            f"Answer देखें {i}",
-            key=f"answer_{i}"
-        ):
-
+        if st.button(f"Answer देखें {i}", key=f"answer_{i}"):
             if user_answer == answer:
-
-                st.success(
-                    f"✅ सही उत्तर: {answer}"
-                )
-
+                st.success(f"✅ सही उत्तर: {answer}")
             else:
-
-                st.error(
-                    f"❌ गलत। सही उत्तर: {answer}"
-                )
-
+                st.error(f"❌ गलत। सही उत्तर: {answer}")
 
 # =========================================================
 # FOOTER
 # =========================================================
 
 st.divider()
-
-st.caption(
-    "📚 SSC GK Search Master | "
-    "No API Key Required"
-)
+st.caption("📚 SSC GK Search Master | Free AI Powered")
+    
