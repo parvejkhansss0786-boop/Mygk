@@ -2,7 +2,8 @@ import streamlit as st
 import PyPDF2
 import re
 import random
-from openai import OpenAI
+import requests
+import json
 
 st.set_page_config(
     page_title="SSC GK Search AI",
@@ -15,18 +16,12 @@ st.set_page_config(
 # =========================================================
 OPENROUTER_KEY = "Sk-or-v1-d83da7172ae9d700a68e74ac456bf7d33ed9b1ac4140956aa6ca209ed161749d"
 
-client = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key=OPENROUTER_KEY, 
-)
-
 st.title("📚 SSC GK Search Master")
 st.caption("Free AI Model • Local Knowledge • PDF Search • MCQ")
 
 # =========================================================
 # BUILT-IN SSC KNOWLEDGE
 # =========================================================
-
 KNOWLEDGE = {
     "rbi": """
 RBI की स्थापना 1 अप्रैल 1935 को हुई थी।
@@ -35,7 +30,6 @@ RBI भारत का केंद्रीय बैंक है।
 RBI की स्थापना RBI Act, 1934 के तहत हुई।
 RBI मौद्रिक नीति से संबंधित महत्वपूर्ण कार्य करता है।
 """,
-
     "संविधान": """
 भारत का संविधान 26 नवंबर 1949 को अंगीकृत किया गया।
 भारत का संविधान 26 जनवरी 1950 को लागू हुआ।
@@ -44,7 +38,6 @@ RBI मौद्रिक नीति से संबंधित महत्
 राज्य के नीति-निदेशक तत्व भाग IV में हैं।
 मौलिक कर्तव्य भाग IVA में हैं।
 """,
-
     "अर्थशास्त्र": """
 GDP का अर्थ Gross Domestic Product है।
 मुद्रास्फीति का सामान्य अर्थ वस्तुओं और सेवाओं के सामान्य मूल्य स्तर में वृद्धि है।
@@ -52,7 +45,6 @@ RBI भारत का केंद्रीय बैंक है।
 राजकोषीय नीति सरकार के कर और व्यय से संबंधित नीति है।
 मौद्रिक नीति केंद्रीय बैंक द्वारा मुद्रा और ऋण की स्थिति को प्रभावित करने की नीति है।
 """,
-
     "इतिहास": """
 1857 का विद्रोह भारत के इतिहास की महत्वपूर्ण घटना थी।
 भारतीय राष्ट्रीय कांग्रेस की स्थापना 1885 में हुई।
@@ -60,14 +52,12 @@ RBI भारत का केंद्रीय बैंक है।
 सविनय अवज्ञा आंदोलन 1930 में शुरू हुआ।
 भारत छोड़ो आंदोलन 1942 में शुरू हुआ।
 """,
-
     "भूगोल": """
 भारत का क्षेत्रफल लगभग 32.87 लाख वर्ग किलोमीटर है।
 भारत की सबसे लंबी नदी प्रणाली गंगा नदी प्रणाली है।
 हिमालय भारत के उत्तर में स्थित प्रमुख पर्वत प्रणाली है।
 भारतीय मानसून भारत की जलवायु का महत्वपूर्ण भाग है।
 """,
-
     "विज्ञान": """
 प्रकाश संश्लेषण पौधों में होने वाली महत्वपूर्ण जैविक प्रक्रिया है।
 मानव शरीर में हृदय रक्त का परिसंचरण करता है।
@@ -75,7 +65,6 @@ RBI भारत का केंद्रीय बैंक है।
 बल की SI इकाई न्यूटन है।
 ऊर्जा की SI इकाई जूल है।
 """,
-
     "computer": """
 CPU का पूरा नाम Central Processing Unit है।
 RAM का पूरा नाम Random Access Memory है।
@@ -83,13 +72,11 @@ ROM का पूरा नाम Read Only Memory है।
 HTML का पूरा नाम HyperText Markup Language है।
 WWW का पूरा नाम World Wide Web है।
 """,
-
     "पर्यावरण": """
 पारिस्थितिकी जीवों और उनके पर्यावरण के बीच संबंधों का अध्ययन है।
 जैव विविधता का अर्थ जीवों की विविधता से है।
 ग्रीनहाउस गैसें पृथ्वी के ताप संतुलन को प्रभावित करती हैं।
 """,
-
     "कला संस्कृति": """
 भरतनाट्यम तमिलनाडु से संबंधित प्रमुख शास्त्रीय नृत्य है।
 कथक का विकास उत्तर भारत में प्रमुख रूप से हुआ।
@@ -101,7 +88,6 @@ WWW का पूरा नाम World Wide Web है।
 # =========================================================
 # SEARCH ENGINE
 # =========================================================
-
 def search_knowledge(query):
     query = query.lower().strip()
     results = []
@@ -129,7 +115,6 @@ def search_knowledge(query):
 # =========================================================
 # PDF TEXT EXTRACTION
 # =========================================================
-
 def extract_pdf(file):
     reader = PyPDF2.PdfReader(file)
     text = ""
@@ -159,13 +144,11 @@ def search_pdf(text, query):
 # =========================================================
 # TABS
 # =========================================================
-
 tab1, tab2, tab3 = st.tabs(["🔎 Search", "📄 PDF Search", "📝 MCQ"])
 
 # =========================================================
-# SEARCH WITH AI FALLBACK
+# SEARCH WITH AI FALLBACK (USING REQUESTS)
 # =========================================================
-
 with tab1:
     st.header("🔎 SSC Knowledge Search")
     query = st.text_input("अपना सवाल या keyword लिखें", placeholder="जैसे RBI क्या है?")
@@ -185,16 +168,27 @@ with tab1:
             else:
                 st.info("Local knowledge में यह जानकारी नहीं मिली। AI से उत्तर खोजा जा रहा है...")
                 try:
-                    # Calling Free AI Model
-                    response = client.chat.completions.create(
-                      model="google/gemma-4-26b-a4b-it:free",
-                      messages=[
-                        {"role": "system", "content": "You are a helpful assistant for SSC and competitive exams preparation. Answer in clear Hindi."},
-                        {"role": "user", "content": query}
-                      ]
-                    )
-                    st.success("🤖 AI द्वारा दिया गया उत्तर:")
-                    st.write(response.choices[0].message.content)
+                    # Calling Free AI Model via Requests (Forces Header)
+                    url = "https://openrouter.ai/api/v1/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {OPENROUTER_KEY}",
+                        "Content-Type": "application/json"
+                    }
+                    data = {
+                        "model": "google/gemma-4-26b-a4b-it:free",
+                        "messages": [
+                            {"role": "system", "content": "You are a helpful assistant for SSC and competitive exams preparation. Answer in clear Hindi."},
+                            {"role": "user", "content": query}
+                        ]
+                    }
+                    
+                    response = requests.post(url, headers=headers, json=data)
+                    
+                    if response.status_code == 200:
+                        st.success("🤖 AI द्वारा दिया गया उत्तर:")
+                        st.write(response.json()['choices'][0]['message']['content'])
+                    else:
+                        st.error(f"AI Error {response.status_code}: {response.text}")
                     
                 except Exception as e:
                     st.error(f"AI से संपर्क करने में समस्या आई: {e}")
@@ -205,7 +199,6 @@ with tab1:
 # =========================================================
 # PDF SEARCH
 # =========================================================
-
 with tab2:
     st.header("📄 PDF से Answer Search")
     pdf = st.file_uploader("अपनी SSC PDF upload करें", type=["pdf"])
@@ -237,7 +230,6 @@ with tab2:
 # =========================================================
 # MCQ
 # =========================================================
-
 with tab3:
     st.header("📝 SSC Practice MCQ")
 
@@ -265,7 +257,6 @@ with tab3:
 # =========================================================
 # FOOTER
 # =========================================================
-
 st.divider()
 st.caption("📚 SSC GK Search Master | Free AI Powered")
-    
+                
