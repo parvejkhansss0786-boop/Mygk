@@ -11,7 +11,8 @@ st.write("SSC एग्जामिनर के नजरिए से स्�
 try:
     API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel("gemini-pro")
+    model = genai.GenerativeModel("gemini-3.8-flash")
+    
 except:
     st.error("API Key नहीं मिली! कृपया Streamlit की Secrets सेटिंग में GEMINI_API_KEY डालें।")
 
