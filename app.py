@@ -12,7 +12,7 @@ API_KEY = st.text_input("अपनी Google Gemini API Key डालें:", t
 
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini 1.5-flash")
     
 
     # AI का अपडेटेड SSC Examiner माइंडसेट (Static GK और Current Affairs पर फोकस)
