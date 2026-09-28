@@ -1,6 +1,7 @@
 import streamlit as st
 from google import genai
 from google.genai import types
+from openai import OpenAI
 import PyPDF2
 
 
@@ -15,35 +16,27 @@ st.set_page_config(
 )
 
 st.title("📚 SSC GK & Current Affairs AI Master")
-st.caption("SSC CGL • CHSL • CPO • Delhi Police | GK • Current Affairs • PDF • AI Chat")
+st.caption(
+    "SSC CGL • CHSL • CPO • Delhi Police | "
+    "GK • Current Affairs • PDF • AI Chat"
+)
 
 
 # =========================================================
-# API CONFIGURATION
+# API KEYS
 # =========================================================
 
-try:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    API_KEY = ""
-
-if not API_KEY:
-    st.error(
-        "❌ GEMINI_API_KEY नहीं मिली। "
-        "Streamlit Secrets में GEMINI_API_KEY डालें।"
-    )
-    st.stop()
+def get_secret(name):
+    try:
+        return st.secrets.get(name, "")
+    except Exception:
+        return ""
 
 
-try:
-    client = genai.Client(api_key=API_KEY)
-except Exception as e:
-    st.error("❌ Gemini API client शुरू नहीं हो पाया।")
-    st.code(str(e))
-    st.stop()
-
-
-MODEL_NAME = "gemini-3.8-flash"
+GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
+OPENROUTER_API_KEY = get_secret("OPENROUTER_API_KEY")
+GROQ_API_KEY = get_secret("GROQ_API_KEY")
 
 
 # =========================================================
@@ -53,7 +46,7 @@ MODEL_NAME = "gemini-3.8-flash"
 SYSTEM_PROMPT = """
 तुम SSC परीक्षा के लिए एक विशेषज्ञ GK शिक्षक और प्रश्न-निर्माता हो।
 
-तुम्हारा मुख्य फोकस:
+मुख्य फोकस:
 SSC CGL
 SSC CHSL
 SSC CPO
@@ -69,26 +62,26 @@ Delhi Police
 
 1. तथ्यात्मक शुद्धता सबसे महत्वपूर्ण है।
 2. गलत या अनुमानित तथ्य मत दो।
-3. यदि किसी तथ्य को लेकर पर्याप्त निश्चितता नहीं है तो साफ बताओ।
-4. Static GK में केवल महत्वपूर्ण और परीक्षा उपयोगी facts दो।
-5. प्रश्नों को SSC स्तर का रखो।
+3. किसी तथ्य पर पर्याप्त certainty न हो तो साफ बताओ।
+4. Static GK में महत्वपूर्ण exam-oriented facts दो।
+5. प्रश्न SSC स्तर के रखो।
 6. बहुत आसान प्रश्नों से बचो।
-7. जहाँ संभव हो, confusing options बनाओ।
+7. जहाँ संभव हो confusing options बनाओ।
 8. एक ही तथ्य को बार-बार repeat मत करो।
 9. प्रश्न के बाद सही उत्तर और explanation दो।
 10. Explanation छोटी लेकिन तथ्यपूर्ण हो।
-11. Actual PYQ होने का दावा तभी करो जब प्रश्न वास्तव में verified PYQ हो।
-12. अगर user "PYQ pattern" मांगे तो उसी pattern पर नया प्रश्न बनाओ और उसे actual PYQ मत बताओ।
+11. Actual PYQ होने का दावा तभी करो जब verified हो।
+12. "PYQ pattern" में नया प्रश्न बनाओ और उसे actual PYQ मत बताओ।
 13. Current Affairs में तारीख और वर्ष स्पष्ट रखो।
 14. History में काल, शासक, युद्ध, स्थान और परिणाम में गलती मत करो।
-15. Geography में स्थान और भौगोलिक facts ध्यान से दो।
-16. Polity में Article, Amendment, Act और Constitutional provisions में गलती मत करो।
+15. Geography के facts ध्यान से दो।
+16. Polity में Article, Amendment, Act और Constitutional provisions सही रखो।
 17. Economics में definitions और concepts सही रखो।
 18. Science में scientific terminology सही रखो।
-19. अगर user किसी topic को "deep" में समझाने को कहे तो topic को basic से advanced तक समझाओ।
-20. अगर user one-liner मांगे तो केवल concise one-liners दो।
-21. अगर user MCQ मांगे तो options A, B, C, D के साथ दो।
-22. अगर user explanation मांगे तो answer के साथ explanation भी दो।
+19. "Deep" में basic से advanced तक समझाओ।
+20. "One liner" में concise one-liners दो।
+21. MCQ में A, B, C, D options दो।
+22. Explanation मांगने पर answer और explanation दोनों दो।
 
 MCQ FORMAT:
 
@@ -108,12 +101,121 @@ SSC परीक्षा के लिए महत्वपूर्ण तथ
 - ............
 - ............
 
-हमेशा उत्तर को exam-oriented और तथ्यात्मक रखो।
+हमेशा उत्तर exam-oriented और तथ्यात्मक रखो।
 """
 
 
 # =========================================================
-# AI FUNCTION
+# AI PROVIDERS
+# =========================================================
+
+providers = []
+
+
+# ---------------- GEMINI ----------------
+
+if GEMINI_API_KEY:
+
+    try:
+
+        gemini_client = genai.Client(
+            api_key=GEMINI_API_KEY
+        )
+
+        providers.append({
+            "name": "Google Gemini",
+            "type": "gemini",
+            "client": gemini_client,
+            "models": [
+                "gemini-2.5-flash",
+                "gemini-2.5-pro"
+            ]
+        })
+
+    except Exception:
+        pass
+
+
+# ---------------- OPENAI ----------------
+
+if OPENAI_API_KEY:
+
+    try:
+
+        openai_client = OpenAI(
+            api_key=OPENAI_API_KEY
+        )
+
+        providers.append({
+            "name": "OpenAI",
+            "type": "openai",
+            "client": openai_client,
+            "models": [
+                "gpt-5",
+                "gpt-5-mini"
+            ]
+        })
+
+    except Exception:
+        pass
+
+
+# ---------------- OPENROUTER ----------------
+
+if OPENROUTER_API_KEY:
+
+    try:
+
+        openrouter_client = OpenAI(
+            api_key=OPENROUTER_API_KEY,
+            base_url="https://openrouter.ai/api/v1"
+        )
+
+        providers.append({
+            "name": "OpenRouter",
+            "type": "openrouter",
+            "client": openrouter_client,
+            "models": [
+                "openai/gpt-5",
+                "anthropic/claude-sonnet-4",
+                "google/gemini-2.5-pro",
+                "google/gemini-2.5-flash"
+            ]
+        })
+
+    except Exception:
+        pass
+
+
+# ---------------- GROQ ----------------
+
+if GROQ_API_KEY:
+
+    try:
+
+        groq_client = OpenAI(
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        )
+
+        providers.append({
+            "name": "Groq",
+            "type": "groq",
+            "client": groq_client,
+            "models": [
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b",
+                "llama-3.3-70b-versatile",
+                "llama-3.1-8b-instant"
+            ]
+        })
+
+    except Exception:
+        pass
+
+
+# =========================================================
+# AI FUNCTION WITH AUTOMATIC FALLBACK
 # =========================================================
 
 def ask_ai(
@@ -121,73 +223,147 @@ def ask_ai(
     use_system_prompt=True,
     max_tokens=6000
 ):
-    try:
-        if use_system_prompt:
-            final_prompt = (
-                SYSTEM_PROMPT
-                + "\n\nUSER REQUEST:\n"
-                + user_prompt
-            )
-        else:
-            final_prompt = user_prompt
 
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=final_prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=max_tokens
-            )
+    if use_system_prompt:
+
+        final_prompt = (
+            SYSTEM_PROMPT
+            + "\n\nUSER REQUEST:\n"
+            + user_prompt
         )
 
-        if response is None:
-            return "❌ AI से कोई response नहीं मिला।"
+    else:
 
-        if response.text:
-            return response.text
+        final_prompt = user_prompt
 
-        return "❌ AI ने कोई text response नहीं दिया।"
 
-    except Exception as e:
-        error_text = str(e).lower()
+    if not providers:
 
-        if (
-            "429" in error_text
-            or "resourceexhausted" in error_text
-            or "quota" in error_text
-        ):
-            return """
-⚠️ Gemini API की quota या rate limit अभी पूरी हो गई है।
+        return """
+❌ कोई AI API configured नहीं है।
 
-यह app की coding error नहीं है।
-कुछ समय बाद दोबारा कोशिश करें या अपने Gemini API project की quota/billing स्थिति देखें।
+Streamlit Secrets में कम से कम एक API key डालें:
+
+GEMINI_API_KEY
+OPENAI_API_KEY
+OPENROUTER_API_KEY
+GROQ_API_KEY
 """
 
-        if "api key" in error_text or "401" in error_text or "403" in error_text:
-            return """
-❌ Gemini API Key में समस्या है।
 
-कृपया:
-1. API key सही है या नहीं देखें।
-2. Streamlit Secrets में GEMINI_API_KEY सही नाम से मौजूद है।
-3. API key active है या नहीं देखें।
-"""
+    errors = []
 
-        if "not found" in error_text or "404" in error_text:
-            return f"""
-❌ Model उपलब्ध नहीं है।
 
-Current model:
-{MODEL_NAME}
+    # =====================================================
+    # PROVIDER → MODEL FALLBACK
+    # =====================================================
 
-Gemini API configuration और model availability check करें।
-"""
+    for provider in providers:
 
-        return f"""
-❌ AI request में error आया:
+        provider_name = provider["name"]
+        provider_type = provider["type"]
+        client = provider["client"]
 
-{str(e)}
-"""
+
+        for model in provider["models"]:
+
+            try:
+
+                # =========================================
+                # GEMINI
+                # =========================================
+
+                if provider_type == "gemini":
+
+                    response = client.models.generate_content(
+
+                        model=model,
+
+                        contents=final_prompt,
+
+                        config=types.GenerateContentConfig(
+                            temperature=0.2,
+                            max_output_tokens=max_tokens
+                        )
+                    )
+
+                    if response and response.text:
+
+                        return response.text
+
+
+                # =========================================
+                # OPENAI / OPENROUTER / GROQ
+                # =========================================
+
+                else:
+
+                    response = client.chat.completions.create(
+
+                        model=model,
+
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": SYSTEM_PROMPT
+                            },
+                            {
+                                "role": "user",
+                                "content": user_prompt
+                            }
+                        ],
+
+                        temperature=0.2,
+
+                        max_tokens=max_tokens
+                    )
+
+
+                    if response.choices:
+
+                        answer = (
+                            response
+                            .choices[0]
+                            .message
+                            .content
+                        )
+
+                        if answer:
+
+                            return answer
+
+
+            except Exception as e:
+
+                errors.append(
+                    f"{provider_name} / {model}: "
+                    f"{str(e)[:300]}"
+                )
+
+                continue
+
+
+    # =====================================================
+    # ALL PROVIDERS FAILED
+    # =====================================================
+
+    return """
+⚠️ सभी configured AI providers से response नहीं मिला।
+
+संभावित कारण:
+
+• API quota समाप्त
+• API key invalid
+• Model unavailable
+• Rate limit
+• Provider server समस्या
+• Internet/API connection समस्या
+
+App ने उपलब्ध providers और fallback models को try किया।
+
+Technical details:
+
+""" + "\n".join(errors[-10:])
 
 
 # =========================================================
@@ -195,6 +371,7 @@ Gemini API configuration और model availability check करें।
 # =========================================================
 
 if "chat_history" not in st.session_state:
+
     st.session_state.chat_history = []
 
 
@@ -225,9 +402,27 @@ with st.sidebar:
 
     st.divider()
 
+    st.subheader("🤖 AI Providers")
+
+    if providers:
+
+        for provider in providers:
+
+            st.success(
+                "✓ " + provider["name"]
+            )
+
+    else:
+
+        st.error(
+            "कोई API configured नहीं है"
+        )
+
+    st.divider()
+
     st.info(
-        "📌 यह app Static GK, Current Affairs, "
-        "MCQ, One-Liner, Deep Study और PDF से questions बनाने के लिए है।"
+        "📌 Static GK, Current Affairs, MCQ, "
+        "One-Liner, Deep Study और PDF Questions"
     )
 
 
@@ -246,16 +441,21 @@ tab1, tab2, tab3, tab4 = st.tabs(
 
 
 # =========================================================
-# TAB 1 - TOPIC QUESTIONS
+# TAB 1
 # =========================================================
 
 with tab1:
 
-    st.header("🔍 किसी भी Topic से SSC Questions")
+    st.header(
+        "🔍 किसी भी Topic से SSC Questions"
+    )
 
     topic = st.text_input(
         "Topic लिखें",
-        placeholder="जैसे: भारतीय अर्थव्यवस्था, मेवात का इतिहास, RBI, मुगल साम्राज्य"
+        placeholder=(
+            "जैसे: भारतीय अर्थव्यवस्था, "
+            "मेवात का इतिहास, RBI, मुगल साम्राज्य"
+        )
     )
 
     question_type = st.selectbox(
@@ -274,10 +474,14 @@ with tab1:
         use_container_width=True
     )
 
+
     if generate_topic:
 
         if not topic.strip():
-            st.warning("⚠️ पहले कोई topic लिखें।")
+
+            st.warning(
+                "⚠️ पहले कोई topic लिखें।"
+            )
 
         else:
 
@@ -291,7 +495,7 @@ Question Type: {question_type}
 कुल {question_count} प्रश्न तैयार करो।
 
 अगर MCQ है:
-- प्रत्येक प्रश्न के 4 options दो।
+- 4 options दो।
 - सही answer दो।
 - explanation दो।
 
@@ -299,14 +503,16 @@ Question Type: {question_type}
 - केवल महत्वपूर्ण परीक्षा उपयोगी one-liners दो।
 
 अगर Deep Study + MCQ है:
-- पहले topic का structured explanation दो।
-- फिर महत्वपूर्ण facts दो।
+- पहले structured explanation दो।
+- फिर important facts दो।
 - फिर {question_count} कठिन MCQ दो।
 
 Questions में repetition नहीं होना चाहिए।
 """
 
-            with st.spinner("🧠 SSC स्तर के प्रश्न तैयार हो रहे हैं..."):
+            with st.spinner(
+                "🧠 SSC स्तर के प्रश्न तैयार हो रहे हैं..."
+            ):
 
                 result = ask_ai(prompt)
 
@@ -314,12 +520,14 @@ Questions में repetition नहीं होना चाहिए।
 
 
 # =========================================================
-# TAB 2 - SUBJECT WISE
+# TAB 2
 # =========================================================
 
 with tab2:
 
-    st.header("📚 Subject-wise SSC Preparation")
+    st.header(
+        "📚 Subject-wise SSC Preparation"
+    )
 
     subject = st.selectbox(
         "Subject चुनें",
@@ -350,7 +558,10 @@ with tab2:
 
     subject_topic = st.text_input(
         "Specific topic (optional)",
-        placeholder="जैसे: RBI, भक्ति आंदोलन, Fundamental Rights"
+        placeholder=(
+            "जैसे: RBI, भक्ति आंदोलन, "
+            "Fundamental Rights"
+        )
     )
 
     generate_subject = st.button(
@@ -359,19 +570,22 @@ with tab2:
         use_container_width=True
     )
 
+
     if generate_subject:
 
-        topic_text = subject_topic.strip()
+        if subject_topic.strip():
 
-        if topic_text:
             topic_instruction = f"""
 Specific Topic:
-{topic_text}
+{subject_topic.strip()}
 """
+
         else:
+
             topic_instruction = """
 पूरे subject में SSC परीक्षा के सबसे महत्वपूर्ण areas cover करो।
 """
+
 
         prompt = f"""
 Subject: {subject}
@@ -384,8 +598,6 @@ Difficulty: {difficulty}
 
 कुल {question_count} items/questions दो।
 
-विशेष निर्देश:
-
 यदि mode = Important MCQ:
 SSC परीक्षा के महत्वपूर्ण MCQ बनाओ।
 
@@ -394,17 +606,18 @@ Important factual one-liners दो।
 
 यदि mode = PYQ Pattern:
 Actual PYQ होने का दावा मत करो।
-SSC में पूछे जाने वाले PYQ pattern पर नए प्रश्न बनाओ।
+SSC PYQ pattern पर नए प्रश्न बनाओ।
 
 यदि mode = Concept + MCQ:
 पहले concepts समझाओ और फिर MCQ दो।
 
 यदि mode = Deep Study:
-Topic को basic से advanced तक exam-oriented तरीके से समझाओ।
-फिर महत्वपूर्ण facts और MCQ दो।
+Topic को basic से advanced तक समझाओ।
+फिर important facts और MCQ दो।
 
 गलत facts और repetition से बचो।
 """
+
 
         with st.spinner(
             f"📚 {subject} के questions तैयार हो रहे हैं..."
@@ -416,12 +629,14 @@ Topic को basic से advanced तक exam-oriented तरीके से �
 
 
 # =========================================================
-# TAB 3 - PDF QUESTIONS
+# TAB 3 - PDF
 # =========================================================
 
 with tab3:
 
-    st.header("📄 PDF से SSC Questions")
+    st.header(
+        "📄 PDF से SSC Questions"
+    )
 
     uploaded_file = st.file_uploader(
         "PDF upload करें",
@@ -436,10 +651,12 @@ with tab3:
         key="pdf_count"
     )
 
+
     if uploaded_file is not None:
 
         st.success(
-            f"✅ PDF upload हो गई: {uploaded_file.name}"
+            f"✅ PDF upload हो गई: "
+            f"{uploaded_file.name}"
         )
 
         generate_pdf = st.button(
@@ -448,17 +665,18 @@ with tab3:
             use_container_width=True
         )
 
+
         if generate_pdf:
 
-            with st.spinner("📖 PDF पढ़ी जा रही है..."):
+            with st.spinner(
+                "📖 PDF पढ़ी जा रही है..."
+            ):
 
                 try:
 
                     pdf_reader = PyPDF2.PdfReader(
                         uploaded_file
                     )
-
-                    pages = len(pdf_reader.pages)
 
                     text = ""
 
@@ -467,7 +685,12 @@ with tab3:
                         page_text = page.extract_text()
 
                         if page_text:
-                            text += page_text + "\n"
+
+                            text += (
+                                page_text
+                                + "\n"
+                            )
+
 
                     if not text.strip():
 
@@ -478,7 +701,6 @@ with tab3:
 
                     else:
 
-                        # बहुत बड़ी PDF के लिए text limit
                         max_chars = 120000
 
                         if len(text) > max_chars:
@@ -487,8 +709,9 @@ with tab3:
 
                             st.warning(
                                 "⚠️ PDF बहुत बड़ी है। "
-                                "पहले लगभग 120,000 characters process किए गए हैं।"
+                                "पहले 120,000 characters process किए गए हैं।"
                             )
+
 
                         prompt = f"""
 नीचे PDF से निकाला गया study material है।
@@ -508,12 +731,13 @@ Rules:
 5. हर answer की explanation दो।
 6. Important facts को प्राथमिकता दो।
 7. Repetition मत करो।
-8. अगर PDF में किसी fact की जानकारी नहीं है तो उसे invent मत करो।
+8. PDF में जानकारी न हो तो invent मत करो।
 
 PDF CONTENT:
 
 {text}
 """
+
 
                         result = ask_ai(
                             prompt,
@@ -522,44 +746,60 @@ PDF CONTENT:
 
                         st.markdown(result)
 
+
                 except Exception as e:
 
                     st.error(
                         "❌ PDF process करने में समस्या आई।"
                     )
 
-                    st.code(str(e))
+                    st.code(
+                        str(e)
+                    )
 
 
 # =========================================================
-# TAB 4 - GENERAL AI CHAT
+# TAB 4 - AI CHAT
 # =========================================================
 
 with tab4:
 
-    st.header("🤖 SSC AI Chat")
-
-    st.write(
-        "यहाँ आप किसी भी SSC/GK topic के बारे में सीधे सवाल पूछ सकते हैं।"
+    st.header(
+        "🤖 SSC AI Chat"
     )
 
-    # Chat history display
+    st.write(
+        "यहाँ किसी भी SSC/GK topic के बारे में सीधे सवाल पूछें।"
+    )
+
+
+    # -----------------------------------------------
+    # DISPLAY HISTORY
+    # -----------------------------------------------
+
     for message in st.session_state.chat_history:
 
         if message["role"] == "user":
 
             with st.chat_message("user"):
-                st.markdown(message["content"])
+
+                st.markdown(
+                    message["content"]
+                )
 
         else:
 
             with st.chat_message("assistant"):
-                st.markdown(message["content"])
+
+                st.markdown(
+                    message["content"]
+                )
 
 
     user_question = st.chat_input(
         "जैसे: RBI की monetary policy को deep में समझाओ..."
     )
+
 
     if user_question:
 
@@ -570,27 +810,35 @@ with tab4:
             }
         )
 
-        with st.chat_message("user"):
-            st.markdown(user_question)
 
-        # Previous conversation context
+        with st.chat_message("user"):
+
+            st.markdown(
+                user_question
+            )
+
+
         conversation_context = ""
+
 
         for item in st.session_state.chat_history[-10:]:
 
             role = item["role"]
 
             if role == "user":
+
                 conversation_context += (
                     "\nUSER: "
                     + item["content"]
                 )
 
             else:
+
                 conversation_context += (
                     "\nASSISTANT: "
                     + item["content"]
                 )
+
 
         chat_prompt = f"""
 यह SSC preparation के लिए conversational AI है।
@@ -609,16 +857,24 @@ Latest question का सीधा और उपयोगी उत्तर �
 - "MCQ" कहे → MCQ दो।
 - "questions" कहे → questions दो।
 - "PYQ" कहे → actual PYQ होने का दावा तभी करो जब verified हो।
-- किसी answer को challenge करे → तथ्य दोबारा check करके corrected answer दो।
+- किसी answer को challenge करे → उपलब्ध जानकारी के आधार पर दोबारा जांचकर corrected answer दो।
 """
+
 
         with st.chat_message("assistant"):
 
-            with st.spinner("🧠 सोच रहा हूँ..."):
+            with st.spinner(
+                "🧠 AI सोच रहा है..."
+            ):
 
-                answer = ask_ai(chat_prompt)
+                answer = ask_ai(
+                    chat_prompt
+                )
 
-            st.markdown(answer)
+            st.markdown(
+                answer
+            )
+
 
         st.session_state.chat_history.append(
             {
@@ -635,5 +891,7 @@ Latest question का सीधा और उपयोगी उत्तर �
 st.divider()
 
 st.caption(
-    "📚 SSC GK AI Master | CGL • CHSL • CPO • Delhi Police"
-) 
+    "📚 SSC GK AI Master | "
+    "CGL • CHSL • CPO • Delhi Police | "
+    "Multi-AI Fallback System"
+            )
